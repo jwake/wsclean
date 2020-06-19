@@ -58,6 +58,8 @@ void CommandLine::printHelp()
 		"   These two options specify wether the model data column is required to\n"
 		"   contain valid model data after imaging. It can save time to not update\n"
 		"   the model data column.\n"
+		"-no-clean\n"
+		"   Do not save the clean image.\n"
 		"-no-dirty\n"
 		"   Do not save the dirty image.\n"
 		"-save-first-residual\n"
@@ -1056,7 +1058,7 @@ bool CommandLine::Parse(WSClean& wsclean, int argc, char* argv[], bool isSlave)
 		{
 			++argi;
 			if(argv[argi] == std::string("all"))
-				settings.fieldIds.assign(1, MSSelection::ALL_FIELDS);
+				settings.fieldIds = {MSSelection::ALL_FIELDS};
 			else {
 				aocommon::UVector<int> list = NumberList::ParseIntList(argv[argi]);
 				settings.fieldIds.assign(list.begin(), list.end());
@@ -1336,6 +1338,10 @@ bool CommandLine::Parse(WSClean& wsclean, int argc, char* argv[], bool isSlave)
 		else if(param == "use-wgridder")
 		{
 			settings.useWGridder = true;
+		}
+		else if(param == "no-clean")
+		{
+			settings.isCleanSaved = false;
 		}
 		else if(param == "no-dirty")
 		{

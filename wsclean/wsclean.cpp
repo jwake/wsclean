@@ -920,12 +920,15 @@ void WSClean::saveRestoredImagesForGroup(const ImagingTableEntry& tableEntry, st
 		Logger::Info << "DONE\n";
 		modelImage.reset();
 		
-		Logger::Info << "Writing restored image... ";
-		Logger::Info.Flush();
-		writer.WriteImage("image.fits", restoredImage.data());
-		Logger::Info << "DONE\n";
-		restoredImage.reset();
-		
+		if (_settings.isCleanSaved)
+		{
+			Logger::Info << "Writing restored image... ";
+			Logger::Info.Flush();
+			writer.WriteImage("image.fits", restoredImage.data());
+			Logger::Info << "DONE\n";
+			restoredImage.reset();
+		}
+
 		if(curPol == *_settings.polarizations.rbegin())
 		{
 			ImageFilename imageName = ImageFilename(currentChannelIndex, tableEntry.outputIntervalIndex);

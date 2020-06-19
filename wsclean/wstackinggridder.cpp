@@ -6,6 +6,7 @@
 #include <iostream>
 #include <fstream>
 
+#include <omp.h>
 template<typename T>
 WStackingGridderBase<T>::WStackingGridderBase(size_t width, size_t height, double pixelSizeX, double pixelSizeY, size_t fftThreadCount, size_t kernelSize, size_t overSamplingFactor) :
 	_width(width),
@@ -194,6 +195,46 @@ void WStackingGridderBase<double>::fftToImageThreadFunction(std::mutex *mutex, s
 	lock.unlock();
 }
 
+struct fftf_data {
+	public:
+	fftf_data(ImageBufferAllocator * allocator, size_t _width, size_t _height) {
+		const size_t imgSize = _width * _height;
+		fftwIn = allocator->AllocateCPtr<float>(imgSize),
+		fftwOut = allocator->AllocateCPtr<float>(imgSize);
+		plan = fftwf_plan_dft_2d(_height, _width,
+			reinterpret_cast<fftwf_complex*>(fftwIn.data()),
+			reinterpret_cast<fftwf_complex*>(fftwOut.data()),
+			FFTW_BACKWARD, FFTW_ESTIMATE);
+	}
+
+	~fftf_data() {
+		fftwf_destroy_plan(plan);
+	}
+
+	ImageBufferAllocator::CPtr<float> fftwIn, fftwOut;
+	fftwf_plan plan;
+};
+
+struct fftd_data {
+	public:
+	fftd_data(ImageBufferAllocator * allocator, size_t _width, size_t _height) {
+		const size_t imgSize = _width * _height;
+		fftwIn = allocator->AllocateCPtr<double>(imgSize),
+		fftwOut = allocator->AllocateCPtr<double>(imgSize);
+		plan = fftw_plan_dft_2d(_height, _width,
+			reinterpret_cast<fftw_complex*>(fftwIn.data()),
+			reinterpret_cast<fftw_complex*>(fftwOut.data()),
+			FFTW_BACKWARD, FFTW_ESTIMATE);
+	}
+
+	~fftd_data() {
+		fftw_destroy_plan(plan);
+	}
+
+	ImageBufferAllocator::CPtr<double> fftwIn, fftwOut;
+	fftw_plan plan;
+};
+
 template<>
 void WStackingGridderBase<float>::fftToImageThreadFunction(std::mutex *mutex, std::stack<size_t> *tasks, size_t threadIndex)
 {
@@ -318,6 +359,62 @@ void WStackingGridderBase<float>::fftToUVThreadFunction(std::mutex *mutex, std::
 	// Lock is still required for destroying plan
 	fftwf_destroy_plan(plan);
 	lock.unlock();
+}
+
+fftf_data* fftf = NULL;
+fftd_data* fftd = NULL;
+#pragma omp threadprivate(fftf, fftd)
+
+template<>
+void WStackingGridderBase<float>::FinishInversionPass() {
+
+	const size_t imgSize = _width * _height;
+	size_t layerOffset = layerRangeStart(_curLayerRangeIndex);
+	size_t nLayersInPass = layerRangeStart(_curLayerRangeIndex+1) - layerOffset;
+	#pragma omp parallel num_threads(_nFFTThreads - 1) 
+	{
+		fftf = new fftf_data(_imageBufferAllocator, _width, _height);
+		#pragma omp for 
+		for (size_t layer = 0; layer < nLayersInPass; layer++) {
+			// Fourier transform the layer
+			std::complex<float> *uvData = _layeredUVData[layer].data();
+			std::copy_n(uvData, imgSize, fftf->fftwIn.data());
+			fftwf_execute(fftf->plan);
+			
+			// Add layer to full image
+			if(_isComplex)
+				projectOnImageAndCorrect<true>(fftf->fftwOut.data(), LayerToW(layer + layerOffset), omp_get_thread_num());
+			else
+				projectOnImageAndCorrect<false>(fftf->fftwOut.data(), LayerToW(layer + layerOffset), omp_get_thread_num());
+		}
+		delete fftf;
+	}
+}
+
+template<>
+void WStackingGridderBase<double>::FinishInversionPass() {
+
+	const size_t imgSize = _width * _height;
+	size_t layerOffset = layerRangeStart(_curLayerRangeIndex);
+	size_t nLayersInPass = layerRangeStart(_curLayerRangeIndex+1) - layerOffset;
+	#pragma omp parallel num_threads(_nFFTThreads - 1) 
+	{
+		fftd = new fftd_data(_imageBufferAllocator, _width, _height);
+		#pragma omp for 
+		for (size_t layer = 0; layer < nLayersInPass; layer++) {
+			// Fourier transform the layer
+			std::complex<double> *uvData = _layeredUVData[layer].data();
+			std::copy_n(uvData, imgSize, fftd->fftwIn.data());
+			fftw_execute(fftd->plan);
+			
+			// Add layer to full image
+			if(_isComplex)
+				projectOnImageAndCorrect<true>(fftd->fftwOut.data(), LayerToW(layer + layerOffset), omp_get_thread_num());
+			else
+				projectOnImageAndCorrect<false>(fftd->fftwOut.data(), LayerToW(layer + layerOffset), omp_get_thread_num());
+		}
+		delete fftd;
+	}
 }
 
 template<typename T>
@@ -566,6 +663,7 @@ void WStackingGridderBase<T>::AddDataSample(std::complex<float> sample, double u
 			{
 				if(x < 0) x += _width;
 				if(y < 0) y += _height;
+
 				uvData[x + y*_width] += sample;
 			}
 		}

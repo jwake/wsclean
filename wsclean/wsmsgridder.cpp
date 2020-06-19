@@ -108,6 +108,10 @@ size_t WSMSGridder::getSuggestedWGridSize() const
 
 void WSMSGridder::gridMeasurementSet(MSData &msData)
 {
+	#pragma omp parallel shared(msData)
+	#pragma omp master
+	{
+
 	const MultiBandData selectedBand(msData.SelectedBand());
 	_gridder->PrepareBand(selectedBand);
 	aocommon::UVector<std::complex<float>> modelBuffer(selectedBand.MaxChannels());
@@ -119,14 +123,16 @@ void WSMSGridder::gridMeasurementSet(MSData &msData)
 	// to a lane is reasonably slow; it requires holding a mutex. Without
 	// these buffers, writing the lane was a bottleneck and multithreading
 	// did not help. I think.
-	std::vector<lane_write_buffer<InversionWorkSample>> bufferedLanes(_cpuCount);
-	size_t bufferSize = std::max<size_t>(8u, _inversionCPULanes[0].capacity()/8);
-	bufferSize = std::min<size_t>(128, std::min(bufferSize, _inversionCPULanes[0].capacity()));
-	for(size_t i=0; i!=_cpuCount; ++i)
-	{
-		bufferedLanes[i].reset(&_inversionCPULanes[i], bufferSize);
-	}
+	//std::vector<lane_write_buffer<InversionWorkSample>> bufferedLanes(_cpuCount);
+	//size_t bufferSize = std::max<size_t>(8u, _inversionCPULanes[0].capacity()/8);
+	//bufferSize = std::min<size_t>(128, std::min(bufferSize, _inversionCPULanes[0].capacity()));
+	//for(size_t i=0; i!=_cpuCount; ++i)
+	//{
+	//	bufferedLanes[i].reset(&_inversionCPULanes[i], bufferSize);
+	//}
 	
+	ao::uvector<InversionWorkSample> items(selectedBand.MaxChannels());
+
 	InversionRow newItem;
 	aocommon::UVector<std::complex<float>> newItemData(selectedBand.MaxChannels());
 	newItem.data = newItemData.data();
@@ -160,16 +166,21 @@ void WSMSGridder::gridMeasurementSet(MSData &msData)
 	
 			readAndWeightVisibilities<1>(*msData.msProvider, newItem, curBand, weightBuffer.data(), modelBuffer.data(), isSelected.data());
 			
-			InversionWorkSample sampleData;
+			
 			for(size_t ch=0; ch!=curBand.ChannelCount(); ++ch)
 			{
 				double wavelength = curBand.ChannelWavelength(ch);
-				sampleData.sample = newItem.data[ch];
-				sampleData.uInLambda = newItem.uvw[0] / wavelength;
-				sampleData.vInLambda = newItem.uvw[1] / wavelength;
-				sampleData.wInLambda = newItem.uvw[2] / wavelength;
-				size_t cpu = _gridder->WToLayer(sampleData.wInLambda) % _cpuCount;
-				bufferedLanes[cpu].write(sampleData);
+				#pragma omp task shared(_gridder) firstprivate(wavelength, newItem, ch)
+				{
+					InversionWorkSample sampleData;
+					
+					sampleData.sample = newItem.data[ch];
+					sampleData.uInLambda = newItem.uvw[0] / wavelength;
+					sampleData.vInLambda = newItem.uvw[1] / wavelength;
+					sampleData.wInLambda = newItem.uvw[2] / wavelength;
+					size_t cpu = _gridder->WToLayer(sampleData.wInLambda) % _cpuCount;
+					_gridder->AddDataSample(sampleData.sample, sampleData.uInLambda, sampleData.vInLambda, sampleData.wInLambda);
+				}
 			}
 			
 			++rowsRead;
@@ -178,16 +189,19 @@ void WSMSGridder::gridMeasurementSet(MSData &msData)
 		msData.msProvider->NextRow();
 	}
 	
-	for(lane_write_buffer<InversionWorkSample>& buflane : bufferedLanes)
-		buflane.write_end();
+	//for(lane_write_buffer<InversionWorkSample>& buflane : bufferedLanes)
+	//	buflane.write_end();
 	
 	if(Verbose())
 		Logger::Info << "Rows that were required: " << rowsRead << '/' << msData.matchingRows << '\n';
 	msData.totalRowsProcessed += rowsRead;
+	#pragma omp taskwait
+	}
 }
 
 void WSMSGridder::startInversionWorkThreads(size_t maxChannelCount)
 {
+	return;
 	_inversionCPULanes.resize(_cpuCount);
 	_threadGroup.clear();
 	for(size_t i=0; i!=_cpuCount; ++i)
@@ -200,6 +214,7 @@ void WSMSGridder::startInversionWorkThreads(size_t maxChannelCount)
 
 void WSMSGridder::finishInversionWorkThreads()
 {
+	return;
 	for(std::thread& thrd : _threadGroup)
 		thrd.join();
 	_threadGroup.clear();
@@ -344,11 +359,11 @@ void WSMSGridder::Invert()
 			
 			const MultiBandData selectedBand(msData.SelectedBand());
 			
-			startInversionWorkThreads(selectedBand.MaxChannels());
+			//startInversionWorkThreads(selectedBand.MaxChannels());
 		
 			gridMeasurementSet(msData);
 			
-			finishInversionWorkThreads();
+			//finishInversionWorkThreads();
 		}
 		
 		Logger::Info << "Fourier transforms...\n";
