@@ -520,7 +520,8 @@ void WSClean::RunClean()
 						ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "dirty.fits", intervalIndex, *pol, false);
 					if(_settings.deconvolutionIterationCount == 0)
 					{
-						ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "image.fits", intervalIndex, *pol, false);
+						if(_settings.isCleanSaved)
+							ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "image.fits", intervalIndex, *pol, false);
 						if(_settings.applyPrimaryBeam || (_settings.gridWithBeam || !_settings.atermConfigFilename.empty()))
 							ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "image-pb.fits", intervalIndex, *pol, false);
 					}
@@ -542,6 +543,7 @@ void WSClean::RunClean()
 							ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "dirty.fits", intervalIndex, *pol, true);
 						if(_settings.deconvolutionIterationCount == 0)
 						{
+							if(_settings.isCleanSaved)
 								ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "image.fits", intervalIndex, *pol, true);
 							if(_settings.applyPrimaryBeam || (_settings.gridWithBeam || !_settings.atermConfigFilename.empty()))
 								ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "image-pb.fits", intervalIndex, *pol, true);
@@ -861,13 +863,13 @@ void WSClean::runIndependentGroup(ImagingTable& groupTable, std::unique_ptr<Prim
 			saveRestoredImagesForGroup(groupTable[joinedIndex], primaryBeam);
 		
 		if(_settings.saveSourceList)
-    {
+		{
 			_deconvolution.SaveSourceList(groupTable, _observationInfo.phaseCentreRA, _observationInfo.phaseCentreDec);
 			if(_settings.applyPrimaryBeam || _settings.gridWithBeam || !_settings.atermConfigFilename.empty())
 			{
 				_deconvolution.SavePBSourceList(groupTable, _observationInfo.phaseCentreRA, _observationInfo.phaseCentreDec);
 			}
-    }
+		}
 	}
 	
 	_deconvolution.FreeDeconvolutionAlgorithms();
@@ -891,37 +893,36 @@ void WSClean::saveRestoredImagesForGroup(const ImagingTableEntry& tableEntry, st
 		Image restoredImage(_settings.trimmedImageWidth, _settings.trimmedImageHeight);
 		_residualImages.Load(restoredImage.data(), curPol, currentChannelIndex, isImaginary);
 		
-		if(_settings.deconvolutionIterationCount != 0)
+		if(_settings.deconvolutionIterationCount != 0 && _settings.isResidualSaved)
 			writer.WriteImage("residual.fits", restoredImage.data());
 		
 		if(_settings.isUVImageSaved)
 			saveUVImage(restoredImage.data(), tableEntry, isImaginary, "uv");
 		
-		Image modelImage(_settings.trimmedImageWidth, _settings.trimmedImageHeight);
-		_modelImages.Load(modelImage.data(), curPol, currentChannelIndex, isImaginary);
-		double beamMaj = _infoPerChannel[currentChannelIndex].beamMaj;
-		double beamMin, beamPA;
-		std::string beamStr;
-		if(std::isfinite(beamMaj))
-		{
-			beamMin = _infoPerChannel[currentChannelIndex].beamMin;
-			beamPA = _infoPerChannel[currentChannelIndex].beamPA;
-			beamStr = "(beam=" + Angle::ToNiceString(beamMin) + "-" +
-			Angle::ToNiceString(beamMaj) + ", PA=" +
-			Angle::ToNiceString(beamPA) + ")";
-		}
-		else {
-			beamStr = "(beam is neither fitted nor estimated -- using delta scales!)";
-			beamMaj = 0.0; beamMin = 0.0; beamPA = 0.0;
-		}
-		Logger::Info << "Rendering sources to restored image " + beamStr + "... ";
-		Logger::Info.Flush();
-		ModelRenderer::Restore(restoredImage.data(), modelImage.data(), _settings.trimmedImageWidth, _settings.trimmedImageHeight, beamMaj, beamMin, beamPA, _settings.pixelScaleX, _settings.pixelScaleY);
-		Logger::Info << "DONE\n";
-		modelImage.reset();
+		if (_settings.isCleanSaved) {
+			Image modelImage(_settings.trimmedImageWidth, _settings.trimmedImageHeight);
+			_modelImages.Load(modelImage.data(), curPol, currentChannelIndex, isImaginary);
+			double beamMaj = _infoPerChannel[currentChannelIndex].beamMaj;
+			double beamMin, beamPA;
+			std::string beamStr;
+			if(std::isfinite(beamMaj))
+			{
+				beamMin = _infoPerChannel[currentChannelIndex].beamMin;
+				beamPA = _infoPerChannel[currentChannelIndex].beamPA;
+				beamStr = "(beam=" + Angle::ToNiceString(beamMin) + "-" +
+				Angle::ToNiceString(beamMaj) + ", PA=" +
+				Angle::ToNiceString(beamPA) + ")";
+			}
+			else {
+				beamStr = "(beam is neither fitted nor estimated -- using delta scales!)";
+				beamMaj = 0.0; beamMin = 0.0; beamPA = 0.0;
+			}
+			Logger::Info << "Rendering sources to restored image " + beamStr + "... ";
+			Logger::Info.Flush();
+			ModelRenderer::Restore(restoredImage.data(), modelImage.data(), _settings.trimmedImageWidth, _settings.trimmedImageHeight, beamMaj, beamMin, beamPA, _settings.pixelScaleX, _settings.pixelScaleY);
+			Logger::Info << "DONE\n";
+			modelImage.reset();
 		
-		if (_settings.isCleanSaved)
-		{
 			Logger::Info << "Writing restored image... ";
 			Logger::Info.Flush();
 			writer.WriteImage("image.fits", restoredImage.data());
@@ -934,10 +935,11 @@ void WSClean::saveRestoredImagesForGroup(const ImagingTableEntry& tableEntry, st
 			ImageFilename imageName = ImageFilename(currentChannelIndex, tableEntry.outputIntervalIndex);
 			if(_settings.gridWithBeam || !_settings.atermConfigFilename.empty())
 			{
-				IdgMsGridder::SavePBCorrectedImages(writer.Writer(), imageName, "image", _settings);
+				if (_settings.isCleanSaved)
+					IdgMsGridder::SavePBCorrectedImages(writer.Writer(), imageName, "image", _settings);
 				if(_settings.savePsfPb)
 					IdgMsGridder::SavePBCorrectedImages(writer.Writer(), imageName, "psf", _settings);
-				if(_settings.deconvolutionIterationCount != 0)
+				if(_settings.deconvolutionIterationCount != 0 && _settings.isResidualSaved)
 				{
 					IdgMsGridder::SavePBCorrectedImages(writer.Writer(), imageName, "residual", _settings);
 					IdgMsGridder::SavePBCorrectedImages(writer.Writer(), imageName, "model", _settings);
@@ -945,10 +947,11 @@ void WSClean::saveRestoredImagesForGroup(const ImagingTableEntry& tableEntry, st
 			}
 			else if(_settings.applyPrimaryBeam)
 			{
-				primaryBeam->CorrectImages(writer.Writer(), imageName, "image");
+				if (_settings.isCleanSaved)
+					primaryBeam->CorrectImages(writer.Writer(), imageName, "image");
 				if(_settings.savePsfPb)
 					primaryBeam->CorrectImages(writer.Writer(), imageName, "psf");
-				if(_settings.deconvolutionIterationCount != 0)
+				if(_settings.deconvolutionIterationCount != 0 && _settings.isResidualSaved)
 				{
 					primaryBeam->CorrectImages(writer.Writer(), imageName, "residual");
 					primaryBeam->CorrectImages(writer.Writer(), imageName, "model");
@@ -981,21 +984,23 @@ void WSClean::writeFirstResidualImages(const ImagingTable& groupTable) const
 
 void WSClean::writeModelImages(const ImagingTable& groupTable) const
 {
-	Logger::Info << "Writing model image...\n";
-	Image ptr(_settings.trimmedImageWidth, _settings.trimmedImageHeight);
-	for(size_t e=0; e!=groupTable.EntryCount(); ++e)
-	{
-		const ImagingTableEntry& entry = groupTable[e];
-		size_t ch = entry.outputChannelIndex;
-		if(entry.polarization == aocommon::Polarization::YX) {
-			_modelImages.Load(ptr.data(), aocommon::Polarization::XY, ch, true);
-			WSCFitsWriter writer(createWSCFitsWriter(entry, aocommon::Polarization::XY, true, true));
-			writer.WriteImage("model.fits", ptr.data());
-		}
-		else {
-			_modelImages.Load(ptr.data(), entry.polarization, ch, false);
-			WSCFitsWriter writer(createWSCFitsWriter(entry, false, true));
-			writer.WriteImage("model.fits", ptr.data());
+	if (_settings.isModelSaved) {
+		Logger::Info << "Writing model image...\n";
+		Image ptr(_settings.trimmedImageWidth, _settings.trimmedImageHeight);
+		for(size_t e=0; e!=groupTable.EntryCount(); ++e)
+		{
+			const ImagingTableEntry& entry = groupTable[e];
+			size_t ch = entry.outputChannelIndex;
+			if(entry.polarization == aocommon::Polarization::YX) {
+				_modelImages.Load(ptr.data(), aocommon::Polarization::XY, ch, true);
+				WSCFitsWriter writer(createWSCFitsWriter(entry, aocommon::Polarization::XY, true, true));
+				writer.WriteImage("model.fits", ptr.data());
+			}
+			else {
+				_modelImages.Load(ptr.data(), entry.polarization, ch, false);
+				WSCFitsWriter writer(createWSCFitsWriter(entry, false, true));
+				writer.WriteImage("model.fits", ptr.data());
+			}
 		}
 	}
 }

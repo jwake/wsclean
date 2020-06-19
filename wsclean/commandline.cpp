@@ -62,6 +62,10 @@ void CommandLine::printHelp()
 		"   Do not save the clean image.\n"
 		"-no-dirty\n"
 		"   Do not save the dirty image.\n"
+		"-no-model\n"
+		"	Do not save the model image.\n"
+		"-no-residual\n"
+		"	Do not save the residual image.\n"
 		"-save-first-residual\n"
 		"   Save the residual after the first iteration.\n"
 		"-save-weights\n"
@@ -1346,6 +1350,14 @@ bool CommandLine::Parse(WSClean& wsclean, int argc, char* argv[], bool isSlave)
 		else if(param == "no-dirty")
 		{
 			settings.isDirtySaved = false;
+		}
+		else if(param == "no-model")
+		{
+			settings.isModelSaved = false;
+		}
+		else if(param == "no-residual")
+		{
+			settings.isResidualSaved = false;
 		}
 		else if(param == "save-first-residual")
 		{

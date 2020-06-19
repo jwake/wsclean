@@ -123,13 +123,15 @@ void WSMSGridder::gridMeasurementSet(MSData &msData)
 	// to a lane is reasonably slow; it requires holding a mutex. Without
 	// these buffers, writing the lane was a bottleneck and multithreading
 	// did not help. I think.
-	//std::vector<lane_write_buffer<InversionWorkSample>> bufferedLanes(_cpuCount);
-	//size_t bufferSize = std::max<size_t>(8u, _inversionCPULanes[0].capacity()/8);
-	//bufferSize = std::min<size_t>(128, std::min(bufferSize, _inversionCPULanes[0].capacity()));
-	//for(size_t i=0; i!=_cpuCount; ++i)
-	//{
-	//	bufferedLanes[i].reset(&_inversionCPULanes[i], bufferSize);
-	//}
+	#ifndef _OPENMP
+	std::vector<lane_write_buffer<InversionWorkSample>> bufferedLanes(_cpuCount);
+	size_t bufferSize = std::max<size_t>(8u, _inversionCPULanes[0].capacity()/8);
+	bufferSize = std::min<size_t>(128, std::min(bufferSize, _inversionCPULanes[0].capacity()));
+	for(size_t i=0; i!=_cpuCount; ++i)
+	{
+		bufferedLanes[i].reset(&_inversionCPULanes[i], bufferSize);
+	}
+	#endif
 	
 	ao::uvector<InversionWorkSample> items(selectedBand.MaxChannels());
 
@@ -179,7 +181,11 @@ void WSMSGridder::gridMeasurementSet(MSData &msData)
 					sampleData.vInLambda = newItem.uvw[1] / wavelength;
 					sampleData.wInLambda = newItem.uvw[2] / wavelength;
 					size_t cpu = _gridder->WToLayer(sampleData.wInLambda) % _cpuCount;
+#ifdef _OPENMP
 					_gridder->AddDataSample(sampleData.sample, sampleData.uInLambda, sampleData.vInLambda, sampleData.wInLambda);
+#else
+					bufferedLanes[cpu].write(sampleData);
+#endif
 				}
 			}
 			
@@ -189,9 +195,10 @@ void WSMSGridder::gridMeasurementSet(MSData &msData)
 		msData.msProvider->NextRow();
 	}
 	
-	//for(lane_write_buffer<InversionWorkSample>& buflane : bufferedLanes)
-	//	buflane.write_end();
-	
+#ifndef _OPENMP
+	for(lane_write_buffer<InversionWorkSample>& buflane : bufferedLanes)
+		buflane.write_end();
+#endif
 	if(Verbose())
 		Logger::Info << "Rows that were required: " << rowsRead << '/' << msData.matchingRows << '\n';
 	msData.totalRowsProcessed += rowsRead;
@@ -201,7 +208,9 @@ void WSMSGridder::gridMeasurementSet(MSData &msData)
 
 void WSMSGridder::startInversionWorkThreads(size_t maxChannelCount)
 {
+#ifdef _OPENMP
 	return;
+#else
 	_inversionCPULanes.resize(_cpuCount);
 	_threadGroup.clear();
 	for(size_t i=0; i!=_cpuCount; ++i)
@@ -210,15 +219,19 @@ void WSMSGridder::startInversionWorkThreads(size_t maxChannelCount)
 		set_lane_debug_name(_inversionCPULanes[i], "Work lane (buffered) containing individual visibility samples");
 		_threadGroup.emplace_back(&WSMSGridder::workThreadPerSample, this, &_inversionCPULanes[i]);
 	}
+#endif
 }
 
 void WSMSGridder::finishInversionWorkThreads()
 {
+#ifdef _OPENMP
 	return;
+#else
 	for(std::thread& thrd : _threadGroup)
 		thrd.join();
 	_threadGroup.clear();
 	_inversionCPULanes.clear();
+#endif
 }
 
 void WSMSGridder::workThreadPerSample(aocommon::Lane<InversionWorkSample>* workLane)
@@ -359,11 +372,14 @@ void WSMSGridder::Invert()
 			
 			const MultiBandData selectedBand(msData.SelectedBand());
 			
-			//startInversionWorkThreads(selectedBand.MaxChannels());
-		
+#ifndef _OPENMP
+			startInversionWorkThreads(selectedBand.MaxChannels());
+#endif
 			gridMeasurementSet(msData);
-			
-			//finishInversionWorkThreads();
+
+#ifndef _OPENMP			
+			finishInversionWorkThreads();
+#endif
 		}
 		
 		Logger::Info << "Fourier transforms...\n";

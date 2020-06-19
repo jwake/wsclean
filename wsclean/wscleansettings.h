@@ -71,7 +71,7 @@ public:
 	bool joinedPolarizationCleaning, joinedFrequencyCleaning;
 	std::set<aocommon::PolarizationEnum> linkedPolarizations;
 	size_t parallelDeconvolutionMaxSize;
-	bool smallInversion, makePSF, makePSFOnly, isWeightImageSaved, isUVImageSaved, isCleanSaved, isDirtySaved, isFirstResidualSaved;
+	bool smallInversion, makePSF, makePSFOnly, isWeightImageSaved, isUVImageSaved, isCleanSaved, isDirtySaved, isFirstResidualSaved, isResidualSaved, isModelSaved;
 	bool reusePsf, reuseDirty;
 	std::string reusePsfPrefix, reuseDirtyPrefix;
 	bool writeImagingWeightSpectrumColumn;
@@ -203,7 +203,7 @@ inline WSCleanSettings::WSCleanSettings() :
 	linkedPolarizations(),
 	parallelDeconvolutionMaxSize(0),
 	smallInversion(true), makePSF(false), makePSFOnly(false), isWeightImageSaved(false),
-	isUVImageSaved(false), isCleanSaved(true), isDirtySaved(true), isFirstResidualSaved(false), 	
+	isUVImageSaved(false), isCleanSaved(true), isDirtySaved(true), isFirstResidualSaved(false), isResidualSaved(true), isModelSaved(true),	
 	reusePsf(false), reuseDirty(false),
 	reusePsfPrefix(), reuseDirtyPrefix(),
 	writeImagingWeightSpectrumColumn(false),
