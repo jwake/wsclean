@@ -12,7 +12,7 @@
 class CachedImageSet
 {
 public:
-	CachedImageSet() : _polCount(0), _freqCount(0), _image()
+	CachedImageSet() : _polCount(0), _freqCount(0), _image(), _path("")
 	{ }
 	
 	~CachedImageSet()
@@ -24,19 +24,22 @@ public:
 	CachedImageSet(const CachedImageSet& source) = delete;
 	CachedImageSet& operator=(const CachedImageSet& source) = delete;
 	
-	void Initialize(const FitsWriter& writer, size_t polCount, size_t freqCount, const std::string& prefix)
+	void Initialize(const std::string& path, const FitsWriter& writer, size_t polCount, size_t freqCount, const std::string& prefix)
 	{
+		_path = path;
+		if (_path != "" && _path.back() != _pathSeparator)
+			_path = _path + _pathSeparator;
 		_writer = writer;
 		_polCount = polCount;
 		_freqCount = freqCount;
 		_prefix = prefix;
-		_image.reset();
+		_image.reset();S
 	}
 	
 	void SetFitsWriter(const FitsWriter& writer)
 	{
 		_writer = writer;
-	}
+	}	
 	
 	void Load(double* image, aocommon::PolarizationEnum polarization, size_t freqIndex, bool isImaginary) const
 	{
@@ -81,13 +84,13 @@ private:
 		if(_freqCount == 1)
 		{
 			if(isImaginary)
-				return _prefix + '-' + aocommon::Polarization::TypeToShortString(polarization) + "i-tmp.fits";
+				return _path + _prefix + '-' + aocommon::Polarization::TypeToShortString(polarization) + "i-tmp.fits";
 			else
-				return _prefix + '-' + aocommon::Polarization::TypeToShortString(polarization) + "-tmp.fits";
+				return _path + _prefix + '-' + aocommon::Polarization::TypeToShortString(polarization) + "-tmp.fits";
 		}
 		else {
 			std::ostringstream str;
-			str <<  _prefix + '-' + aocommon::Polarization::TypeToShortString(polarization);
+			str << _path + _prefix + '-' + aocommon::Polarization::TypeToShortString(polarization);
 			if(isImaginary)
 				str << 'i';
 			str << '-';
@@ -104,6 +107,14 @@ private:
 	
 	Image _image;
 	std::set<std::string> _storedNames;
+	std::string _path;
+
+	const char _pathSeparator =
+#if defined _WIN32 || defined __CYGWIN__
+    '\\';
+#else
+    '/';
+#endif
 };
 
 #endif

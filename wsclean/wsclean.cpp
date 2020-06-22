@@ -678,11 +678,11 @@ double WSClean::minTheoreticalBeamSize(const ImagingTable& table) const
 void WSClean::runIndependentGroup(ImagingTable& groupTable, std::unique_ptr<PrimaryBeam>& primaryBeam)
 {
 	WSCFitsWriter modelWriter(createWSCFitsWriter(groupTable.Front(), false, true));
-	_modelImages.Initialize(modelWriter.Writer(), _settings.polarizations.size(), _settings.channelsOut, _settings.prefixName + "-model");
+	_modelImages.Initialize(_settings.temporaryDirectory, modelWriter.Writer(), _settings.polarizations.size(), _settings.channelsOut, _settings.prefixName + "-model");
 	WSCFitsWriter writer(createWSCFitsWriter(groupTable.Front(), false, false));
-	_residualImages.Initialize(writer.Writer(), _settings.polarizations.size(), _settings.channelsOut, _settings.prefixName + "-residual");
+	_residualImages.Initialize(_settings.temporaryDirectory, writer.Writer(), _settings.polarizations.size(), _settings.channelsOut, _settings.prefixName + "-residual");
 	if(groupTable.Front().polarization == *_settings.polarizations.begin())
-		_psfImages.Initialize(writer.Writer(), 1, groupTable.SquaredGroupCount(), _settings.prefixName + "-psf");
+		_psfImages.Initialize(_settings.temporaryDirectory, writer.Writer(), 1, groupTable.SquaredGroupCount(), _settings.prefixName + "-psf");
 	
 	// In the case of IDG we have to directly ask for all Four polarizations. This can't 
 	// be parallelized in the current structure.
