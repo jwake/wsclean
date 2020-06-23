@@ -326,7 +326,8 @@ void WSClean::predict(const ImagingTableEntry& entry)
 		for(size_t i=0; i!=size; ++i)
 			modelImageImaginary[i] = -modelImageImaginary[i];
 	}
-	else {
+	else 
+	{
 		_modelImages.Load(modelImageReal.data(), entry.polarization, entry.outputChannelIndex, false);
 		if(aocommon::Polarization::IsComplex(entry.polarization))
 		{
@@ -428,8 +429,13 @@ void WSClean::performReordering(bool isPredictMode)
 	if(_settings.parallelReordering!=1)
 		Logger::Info << "Reordering...\n";
 	
+#ifndef _OPENMP
 	aocommon::ParallelFor<size_t> loop(_settings.parallelReordering);
 	loop.Run(0, _settings.filenames.size(), [&](size_t i, size_t)
+#else
+	#pragma omp parallel for num_threads(_settings.parallelReordering)
+	for (size_t i = 0; i < _settings.filenames.size(); i++)
+#endif 
 	{
 		std::vector<PartitionedMS::ChannelRange> channels;
 		std::map<aocommon::PolarizationEnum, size_t> nextIndex;
@@ -461,11 +467,17 @@ void WSClean::performReordering(bool isPredictMode)
 		}
 		
 		PartitionedMS::Handle partMS = PartitionedMS::Partition(_settings.filenames[i], channels, _globalSelection, _settings.dataColumnName, useModel, initialModelRequired, _settings);
-		std::lock_guard<std::mutex> lock(mutex);
-		_partitionedMSHandles[i] = std::move(partMS);
+		{
+			std::lock_guard<std::mutex> lock(mutex);
+			_partitionedMSHandles[i] = std::move(partMS);
+		}
 		if(_settings.parallelReordering!=1)
 			Logger::Info << "Finished reordering " << _settings.filenames[i] << " [" << i << "]\n";
-	});
+	
+	}
+#ifndef _OPENMP
+	);
+#endif
 }
 
 void WSClean::RunClean()
@@ -520,21 +532,26 @@ void WSClean::RunClean()
 						ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "dirty.fits", intervalIndex, *pol, false);
 					if(_settings.deconvolutionIterationCount == 0)
 					{
-						if(_settings.isCleanSaved)
+						if(_settings.isCleanSaved) 
+						{
 							ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "image.fits", intervalIndex, *pol, false);
-						if(_settings.applyPrimaryBeam || (_settings.gridWithBeam || !_settings.atermConfigFilename.empty()))
-							ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "image-pb.fits", intervalIndex, *pol, false);
+							if(_settings.applyPrimaryBeam || (_settings.gridWithBeam || !_settings.atermConfigFilename.empty()))
+								ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "image-pb.fits", intervalIndex, *pol, false);
+						}
 					}
 					else 
 					{
-						ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "residual.fits", intervalIndex, *pol, false);
-						ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "model.fits", intervalIndex, *pol, false);
-						ImageOperations::RenderMFSImage(_settings, _infoForMFS, intervalIndex, *pol, false, false);
-						if(_settings.applyPrimaryBeam || (_settings.gridWithBeam || !_settings.atermConfigFilename.empty()))
+						if(_settings.isCleanSaved)
 						{
-							ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "residual-pb.fits", intervalIndex, *pol, false);
-							ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "model-pb.fits", intervalIndex, *pol, false);
-							ImageOperations::RenderMFSImage(_settings, _infoForMFS, intervalIndex, *pol, false, true);
+							ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "residual.fits", intervalIndex, *pol, false);
+							ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "model.fits", intervalIndex, *pol, false);
+							ImageOperations::RenderMFSImage(_settings, _infoForMFS, intervalIndex, *pol, false, false);
+							if(_settings.applyPrimaryBeam || (_settings.gridWithBeam || !_settings.atermConfigFilename.empty()))
+							{
+								ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "residual-pb.fits", intervalIndex, *pol, false);
+								ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "model-pb.fits", intervalIndex, *pol, false);
+								ImageOperations::RenderMFSImage(_settings, _infoForMFS, intervalIndex, *pol, false, true);
+							}
 						}
 					}
 					if(aocommon::Polarization::IsComplex(*pol))
@@ -544,19 +561,24 @@ void WSClean::RunClean()
 						if(_settings.deconvolutionIterationCount == 0)
 						{
 							if(_settings.isCleanSaved)
+							{
 								ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "image.fits", intervalIndex, *pol, true);
-							if(_settings.applyPrimaryBeam || (_settings.gridWithBeam || !_settings.atermConfigFilename.empty()))
-								ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "image-pb.fits", intervalIndex, *pol, true);
+								if(_settings.applyPrimaryBeam || (_settings.gridWithBeam || !_settings.atermConfigFilename.empty()))
+									ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "image-pb.fits", intervalIndex, *pol, true);
+							}
 						}
 						else {
-							ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "residual.fits", intervalIndex, *pol, true);
-							ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "model.fits", intervalIndex, *pol, true);
-							ImageOperations::RenderMFSImage(_settings, _infoForMFS, intervalIndex, *pol, true, false);
-							if(_settings.applyPrimaryBeam || (_settings.gridWithBeam || !_settings.atermConfigFilename.empty()))
+							if(_settings.isCleanSaved)
 							{
-								ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "residual-pb.fits", intervalIndex, *pol, true);
-								ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "model-pb.fits", intervalIndex, *pol, true);
-								ImageOperations::RenderMFSImage(_settings, _infoForMFS, intervalIndex, *pol, true, true);
+								ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "residual.fits", intervalIndex, *pol, true);
+								ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "model.fits", intervalIndex, *pol, true);
+								ImageOperations::RenderMFSImage(_settings, _infoForMFS, intervalIndex, *pol, true, false);
+								if(_settings.applyPrimaryBeam || (_settings.gridWithBeam || !_settings.atermConfigFilename.empty()))
+								{
+									ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "residual-pb.fits", intervalIndex, *pol, true);
+									ImageOperations::MakeMFSImage(_settings, _infoPerChannel, _infoForMFS, "model-pb.fits", intervalIndex, *pol, true);
+									ImageOperations::RenderMFSImage(_settings, _infoForMFS, intervalIndex, *pol, true, true);
+								}
 							}
 						}
 					}
@@ -930,6 +952,8 @@ void WSClean::saveRestoredImagesForGroup(const ImagingTableEntry& tableEntry, st
 			restoredImage.reset();
 		}
 
+		_imageAllocator.Free(restoredImage);
+
 		if(curPol == *_settings.polarizations.rbegin())
 		{
 			ImageFilename imageName = ImageFilename(currentChannelIndex, tableEntry.outputIntervalIndex);
@@ -1081,7 +1105,7 @@ void WSClean::readEarlierModelImages(const ImagingTableEntry& entry)
 
 void WSClean::predictGroup(const ImagingTable& imagingGroup)
 {
-	_modelImages.Initialize(
+	_modelImages.Initialize(_settings.temporaryDirectory,
 		createWSCFitsWriter(imagingGroup.Front(), false, true).Writer(),
 		_settings.polarizations.size(), 1, _settings.prefixName + "-model"
 	);

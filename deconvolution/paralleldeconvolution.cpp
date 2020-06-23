@@ -289,8 +289,13 @@ void ParallelDeconvolution::executeParallelRun(class ImageSet& dataImage, class 
 		_algorithms[i]->SetLogReceiver(_logs[i]);
 
 	// Find the starting peak over all subimages
+#ifndef _OPENMP
 	aocommon::ParallelFor<size_t> loop(System::ProcessorCount());
 	loop.Run(0, _algorithms.size(), [&](size_t index, size_t)
+#else
+	#pragma omp parallel for
+	for (size_t index = 0; index < _algorithms.size(); index++)
+#endif
 	{
 		_logs.Activate(index);
 		runSubImage(subImages[index], dataImage, modelImage, psfImages, 0.0, true, &mutex);
@@ -299,7 +304,11 @@ void ParallelDeconvolution::executeParallelRun(class ImageSet& dataImage, class 
 		_logs[index].Mute(false);
 		_logs[index].Info << "Sub-image " << index << " returned peak position.\n";
 		_logs[index].Mute(true);
-	});
+	}
+#ifndef _OPENMP
+	);
+#endif
+
 	double maxValue = 0.0;
 	size_t indexOfMax = 0;
 	for(SubImage& img : subImages)
@@ -315,7 +324,12 @@ void ParallelDeconvolution::executeParallelRun(class ImageSet& dataImage, class 
 	double mIterThreshold = maxValue * (1.0-_settings.deconvolutionMGain);
 	
 	// Run the deconvolution
+#ifndef _OPENMP
 	loop.Run(0, _algorithms.size(), [&](size_t index, size_t)
+#else
+	#pragma  omp parallel for
+	for (size_t index = 0; index < _algorithms.size(); index++)
+#endif
 	{
 		_logs.Activate(index);
 		runSubImage(subImages[index], dataImage, modelImage, psfImages, mIterThreshold, false, &mutex);
@@ -324,7 +338,11 @@ void ParallelDeconvolution::executeParallelRun(class ImageSet& dataImage, class 
 		_logs[index].Mute(false);
 		_logs[index].Info << "Sub-image " << index << " finished its deconvolution iteration.\n";
 		_logs[index].Mute(true);
-	});
+	}
+	
+#ifndef _OPENMP
+	);
+#endif
 	
 	_rmsImage.reset();
 	

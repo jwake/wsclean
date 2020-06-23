@@ -365,6 +365,7 @@ fftf_data* fftf = NULL;
 fftd_data* fftd = NULL;
 #pragma omp threadprivate(fftf, fftd)
 
+// Explicit instantiations below are due to quirks of  OpenMP.
 template<>
 void WStackingGridderBase<float>::FinishInversionPass() {
 
