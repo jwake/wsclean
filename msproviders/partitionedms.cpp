@@ -23,6 +23,8 @@
 #include <sstream>
 #include <memory>
 #include <vector>
+#include <thread>
+#include <chrono>
 
 #include <boost/filesystem/path.hpp>
 
@@ -50,7 +52,15 @@ PartitionedMS::PartitionedMS(const Handle& handle, size_t partIndex, aocommon::P
 	Logger::Info << "Opening reordered part " << partIndex << " spw " << dataDescId << " for " << msPath.data() << '\n';
 	std::string partPrefix = getPartPrefix(msPath.data(), partIndex, polarization, dataDescId, handle._data->_temporaryDirectory);
 	
-	_dataFile.open(partPrefix+".tmp", std::ios::in);
+	for (int tries = 0; tries < 5; tries++)
+	{
+		_dataFile.open(partPrefix+".tmp", std::ios::in);
+		if (_dataFile.good()) 
+			break;
+		
+		std::this_thread::sleep_for(std::chrono::seconds(2));
+	}
+
 	if(!_dataFile.good())
 		throw std::runtime_error("Error opening temporary data file");
 	_dataFile.read(reinterpret_cast<char*>(&_partHeader), sizeof(PartHeader));
@@ -59,7 +69,15 @@ PartitionedMS::PartitionedMS(const Handle& handle, size_t partIndex, aocommon::P
 	
 	if(_partHeader.hasModel)
 	{
-		_fd = open((partPrefix+"-m.tmp").c_str(), O_RDWR);
+		for (int tries = 0; tries < 5; tries++)
+		{
+			_fd = open((partPrefix+"-m.tmp").c_str(), O_RDWR);
+			if (_fd != -1)
+				break;
+
+			std::this_thread::sleep_for(std::chrono::seconds(2));
+		}
+		
 		if(_fd == -1)
 			throw std::runtime_error("Error opening temporary model data file");
 		size_t length = _partHeader.channelCount * _metaHeader.selectedRowCount * _polarizationCountInFile * sizeof(std::complex<float>);
@@ -76,7 +94,14 @@ PartitionedMS::PartitionedMS(const Handle& handle, size_t partIndex, aocommon::P
 		}
 	}
 	
-	_weightFile.open(partPrefix+"-w.tmp", std::ios::in);
+	for (int tries = 0; tries < 5; tries++)
+	{
+		_weightFile.open(partPrefix+"-w.tmp", std::ios::in);
+		if (_weightFile.good()) 
+			break;
+		
+		std::this_thread::sleep_for(std::chrono::seconds(2));
+	}
 	if(!_weightFile.good())
 		throw std::runtime_error("Error opening temporary data file");
 	_weightBuffer.resize(_partHeader.channelCount * _polarizationCountInFile);
