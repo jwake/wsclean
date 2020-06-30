@@ -434,7 +434,7 @@ void WSClean::performReordering(bool isPredictMode)
 	loop.Run(0, _settings.filenames.size(), [&](size_t i, size_t)
 #else
 	#pragma omp parallel for num_threads(_settings.parallelReordering)
-	for (size_t i = 0; i < _settings.filenames.size(); i++)
+	for(size_t i = 0; i < _settings.filenames.size(); i++)
 #endif 
 	{
 		std::vector<PartitionedMS::ChannelRange> channels;

@@ -52,10 +52,10 @@ PartitionedMS::PartitionedMS(const Handle& handle, size_t partIndex, aocommon::P
 	Logger::Info << "Opening reordered part " << partIndex << " spw " << dataDescId << " for " << msPath.data() << '\n';
 	std::string partPrefix = getPartPrefix(msPath.data(), partIndex, polarization, dataDescId, handle._data->_temporaryDirectory);
 	
-	for (int tries = 0; tries < 5; tries++)
+	for(int tries = 0; tries < 5; tries++)
 	{
 		_dataFile.open(partPrefix+".tmp", std::ios::in);
-		if (_dataFile.good()) 
+		if(_dataFile.good()) 
 			break;
 		
 		std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -69,15 +69,15 @@ PartitionedMS::PartitionedMS(const Handle& handle, size_t partIndex, aocommon::P
 	
 	if(_partHeader.hasModel)
 	{
-		for (int tries = 0; tries < 5; tries++)
+		for(int tries = 0; tries < 5; tries++)
 		{
 			_fd = open((partPrefix+"-m.tmp").c_str(), O_RDWR);
-			if (_fd != -1)
+			if(_fd != -1)
 				break;
 
 			std::this_thread::sleep_for(std::chrono::seconds(2));
 		}
-		
+
 		if(_fd == -1)
 			throw std::runtime_error("Error opening temporary model data file");
 		size_t length = _partHeader.channelCount * _metaHeader.selectedRowCount * _polarizationCountInFile * sizeof(std::complex<float>);
@@ -94,10 +94,10 @@ PartitionedMS::PartitionedMS(const Handle& handle, size_t partIndex, aocommon::P
 		}
 	}
 	
-	for (int tries = 0; tries < 5; tries++)
+	for(int tries = 0; tries < 5; tries++)
 	{
 		_weightFile.open(partPrefix+"-w.tmp", std::ios::in);
-		if (_weightFile.good()) 
+		if(_weightFile.good()) 
 			break;
 		
 		std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -597,9 +597,21 @@ void PartitionedMS::unpartition(const PartitionedMS::Handle::HandleData& handle)
 	}
 	
 	ChannelRange firstRange = handle._channels[0];
-	std::ifstream firstDataFile(getPartPrefix(handle._msPath, 0, *pols.begin(), firstRange.dataDescId, handle._temporaryDirectory)+".tmp", std::ios::in);
+	std::string firstDataFilename = getPartPrefix(handle._msPath, 0, *pols.begin(), firstRange.dataDescId, handle._temporaryDirectory)+".tmp";
+	std::ifstream firstDataFile(firstDataFilename, std::ios::in);
 	if(!firstDataFile.good())
-		throw std::runtime_error("Error opening temporary data file");
+	{
+		for (int tries = 0; tries < 5; tries++)
+		{
+			std::this_thread::sleep_for(std::chrono::seconds(2));
+			firstDataFile.open(firstDataFilename, std::ios::in);
+			if (firstDataFile.good())
+				break;
+		}
+
+		if (!firstDataFile.good())
+			throw std::runtime_error("Error opening temporary data file");
+	}
 	PartHeader firstPartHeader;
 	firstDataFile.read(reinterpret_cast<char*>(&firstPartHeader), sizeof(PartHeader));
 	if(!firstDataFile.good())
@@ -618,7 +630,15 @@ void PartitionedMS::unpartition(const PartitionedMS::Handle::HandleData& handle)
 			for(std::set<aocommon::PolarizationEnum>::const_iterator p=pols.begin(); p!=pols.end(); ++p)
 			{
 				std::string partPrefix = getPartPrefix(handle._msPath, part, *p, dataDescId, handle._temporaryDirectory);
-				modelFiles[fileIndex].reset(new std::ifstream(partPrefix + "-m.tmp"));
+				for (int tries = 0; tries < 5; tries++)
+				{
+					modelFiles[fileIndex].reset(new std::ifstream(partPrefix + "-m.tmp"));
+					if (modelFiles[fileIndex]->good())
+						break;
+
+					std::this_thread::sleep_for(std::chrono::seconds(2));
+				}
+
 				++fileIndex;
 			}
 		}
