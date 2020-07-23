@@ -106,7 +106,7 @@ struct AdvImageSetFixture : public ImageSetFixture
 		image(4, 0.0)
 	{
 		writer.SetImageDimensions(2, 2);
-		cSet.Initialize(writer, 2, 2, "wsctest");
+		cSet.Initialize("", writer, 2, 2, "wsctest");
 		image[0] = 2.0;
 		cSet.Store(image.data(), aocommon::Polarization::XX, 0, false);
 		image[0] = -1.0;
