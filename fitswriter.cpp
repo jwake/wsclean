@@ -2,6 +2,7 @@
 #include "fitsreader.h"
 
 #include <aocommon/uvector.h>
+#include <aocommon/retry.h>
 
 #include <stdexcept>
 #include <sstream>
@@ -31,7 +32,7 @@ void FitsWriter::writeHeaders(fitsfile*& fptr, const std::string& filename) cons
 void FitsWriter::writeHeaders(fitsfile *& fptr, const std::string& filename, const std::vector<Dimension>& extraDimensions) const
 {
 	int status = 0;
-	fits_create_file(&fptr, (std::string("!") + filename).c_str(), &status);
+	aocommon::retry(10, [&] { fits_create_file(&fptr, (std::string("!") + filename).c_str(), &status); return status == 0; });
 	checkStatus(status, filename);
 	
 	// append image HDU

@@ -1,5 +1,6 @@
 #include "fitsreader.h"
 #include <aocommon/polarization.h>
+#include <aocommon/retry.h>
 
 #include <stdexcept>
 #include <sstream>
@@ -14,7 +15,7 @@ FitsReader::FitsReader(const FitsReader& source) :
 	_meta(source._meta)
 {
 	int status = 0;
-	fits_open_file(&_fitsPtr, _meta.filename.c_str(), READONLY, &status);
+	aocommon::retry(10, [&] { fits_open_file(&_fitsPtr, _meta.filename.c_str(), READONLY, &status); return status == 0; });
 	checkStatus(status, _meta.filename);
 	
 	// Move to first HDU
@@ -67,7 +68,7 @@ FitsReader& FitsReader::operator=(const FitsReader& rhs)
 	if(rhs._fitsPtr != nullptr)
 	{
 		int status = 0;
-		fits_open_file(&_fitsPtr, _meta.filename.c_str(), READONLY, &status);
+		aocommon::retry(10, [&] { fits_open_file(&_fitsPtr, _meta.filename.c_str(), READONLY, &status); return status == 0; });
 		checkStatus(status, _meta.filename);
 		
 		// Move to first HDU
@@ -161,7 +162,7 @@ void FitsReader::initialize()
 	_meta.unit = JanskyPerBeam;
 	
 	int status = 0;
-	fits_open_file(&_fitsPtr, _meta.filename.c_str(), READONLY, &status);
+	aocommon::retry(10, [&] { fits_open_file(&_fitsPtr, _meta.filename.c_str(), READONLY, &status); return status == 0; });
 	checkStatus(status, _meta.filename);
 	
 	// Move to first HDU
