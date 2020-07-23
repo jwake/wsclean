@@ -133,7 +133,7 @@ void WSMSGridder::gridMeasurementSet(MSData &msData)
 	}
 	#endif
 	
-	ao::uvector<InversionWorkSample> items(selectedBand.MaxChannels());
+	aocommon::UVector<InversionWorkSample> items(selectedBand.MaxChannels());
 
 	InversionRow newItem;
 	aocommon::UVector<std::complex<float>> newItemData(selectedBand.MaxChannels());

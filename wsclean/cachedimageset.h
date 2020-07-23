@@ -33,7 +33,7 @@ public:
 		_polCount = polCount;
 		_freqCount = freqCount;
 		_prefix = prefix;
-		_image.reset();S
+		_image.reset();
 	}
 	
 	void SetFitsWriter(const FitsWriter& writer)

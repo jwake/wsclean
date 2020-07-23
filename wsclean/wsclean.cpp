@@ -952,8 +952,6 @@ void WSClean::saveRestoredImagesForGroup(const ImagingTableEntry& tableEntry, st
 			restoredImage.reset();
 		}
 
-		_imageAllocator.Free(restoredImage);
-
 		if(curPol == *_settings.polarizations.rbegin())
 		{
 			ImageFilename imageName = ImageFilename(currentChannelIndex, tableEntry.outputIntervalIndex);

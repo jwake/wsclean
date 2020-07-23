@@ -197,10 +197,9 @@ void WStackingGridderBase<double>::fftToImageThreadFunction(std::mutex *mutex, s
 
 struct fftf_data {
 	public:
-	fftf_data(ImageBufferAllocator * allocator, size_t _width, size_t _height) {
-		const size_t imgSize = _width * _height;
-		fftwIn = allocator->AllocateCPtr<float>(imgSize),
-		fftwOut = allocator->AllocateCPtr<float>(imgSize);
+	fftf_data(size_t _width, size_t _height) {
+		fftwIn = ImageTC<float>(_width, _height),
+		fftwOut = ImageTC<float>(_width, _height);
 		plan = fftwf_plan_dft_2d(_height, _width,
 			reinterpret_cast<fftwf_complex*>(fftwIn.data()),
 			reinterpret_cast<fftwf_complex*>(fftwOut.data()),
@@ -211,16 +210,15 @@ struct fftf_data {
 		fftwf_destroy_plan(plan);
 	}
 
-	ImageBufferAllocator::CPtr<float> fftwIn, fftwOut;
+	ImageTC<float> fftwIn, fftwOut;
 	fftwf_plan plan;
 };
 
 struct fftd_data {
 	public:
-	fftd_data(ImageBufferAllocator * allocator, size_t _width, size_t _height) {
-		const size_t imgSize = _width * _height;
-		fftwIn = allocator->AllocateCPtr<double>(imgSize),
-		fftwOut = allocator->AllocateCPtr<double>(imgSize);
+	fftd_data(size_t _width, size_t _height) {		
+		fftwIn = ImageTC<double>(_width, _height),
+		fftwOut = ImageTC<double>(_width, _height);
 		plan = fftw_plan_dft_2d(_height, _width,
 			reinterpret_cast<fftw_complex*>(fftwIn.data()),
 			reinterpret_cast<fftw_complex*>(fftwOut.data()),
@@ -231,7 +229,7 @@ struct fftd_data {
 		fftw_destroy_plan(plan);
 	}
 
-	ImageBufferAllocator::CPtr<double> fftwIn, fftwOut;
+	ImageTC<double> fftwIn, fftwOut;
 	fftw_plan plan;
 };
 
@@ -374,7 +372,7 @@ void WStackingGridderBase<float>::FinishInversionPass() {
 	size_t nLayersInPass = layerRangeStart(_curLayerRangeIndex+1) - layerOffset;
 	#pragma omp parallel num_threads(_nFFTThreads - 1) 
 	{
-		fftf = new fftf_data(_imageBufferAllocator, _width, _height);
+		fftf = new fftf_data(_width, _height);
 		#pragma omp for 
 		for (size_t layer = 0; layer < nLayersInPass; layer++) {
 			// Fourier transform the layer
@@ -400,7 +398,7 @@ void WStackingGridderBase<double>::FinishInversionPass() {
 	size_t nLayersInPass = layerRangeStart(_curLayerRangeIndex+1) - layerOffset;
 	#pragma omp parallel num_threads(_nFFTThreads - 1) 
 	{
-		fftd = new fftd_data(_imageBufferAllocator, _width, _height);
+		fftd = new fftd_data(_width, _height);
 		#pragma omp for 
 		for (size_t layer = 0; layer < nLayersInPass; layer++) {
 			// Fourier transform the layer
