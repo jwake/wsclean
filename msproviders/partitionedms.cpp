@@ -32,6 +32,8 @@
 
 #include <casacore/measures/TableMeasures/ScalarMeasColumn.h>
 
+#include <aocommon/retry.h>
+
 // #define REDUNDANT_VALIDATION 1
 
 PartitionedMS::PartitionedMS(const Handle& handle, size_t partIndex, aocommon::PolarizationEnum polarization, size_t dataDescId) :
@@ -52,16 +54,8 @@ PartitionedMS::PartitionedMS(const Handle& handle, size_t partIndex, aocommon::P
 	Logger::Info << "Opening reordered part " << partIndex << " spw " << dataDescId << " for " << msPath.data() << '\n';
 	std::string partPrefix = getPartPrefix(msPath.data(), partIndex, polarization, dataDescId, handle._data->_temporaryDirectory);
 	
-	for(int tries = 0; tries < 5; tries++)
-	{
-		_dataFile.open(partPrefix+".tmp", std::ios::in);
-		if(_dataFile.good()) 
-			break;
-		
-		std::this_thread::sleep_for(std::chrono::seconds(2));
-	}
-
-	if(!_dataFile.good())
+	if (!aocommon::retry(10, [&] { _dataFile.open(partPrefix+".tmp", std::ios::in); return _dataFile.good(); }, 
+							 [] { std::this_thread::sleep_for(std::chrono::seconds(2)); }))
 		throw std::runtime_error("Error opening temporary data file");
 	_dataFile.read(reinterpret_cast<char*>(&_partHeader), sizeof(PartHeader));
 	if(!_dataFile.good())
@@ -69,17 +63,10 @@ PartitionedMS::PartitionedMS(const Handle& handle, size_t partIndex, aocommon::P
 	
 	if(_partHeader.hasModel)
 	{
-		for(int tries = 0; tries < 5; tries++)
-		{
-			_fd = open((partPrefix+"-m.tmp").c_str(), O_RDWR);
-			if(_fd != -1)
-				break;
-
-			std::this_thread::sleep_for(std::chrono::seconds(2));
-		}
-
-		if(_fd == -1)
+		if (!aocommon::retry(10, [&] { _fd = open((partPrefix+"-m.tmp").c_str(), O_RDWR); return _fd != -1; },
+								 [] { std::this_thread::sleep_for(std::chrono::seconds(2)); }))
 			throw std::runtime_error("Error opening temporary model data file");
+
 		size_t length = _partHeader.channelCount * _metaHeader.selectedRowCount * _polarizationCountInFile * sizeof(std::complex<float>);
 		if(length == 0)
 			_modelFileMap = nullptr;
@@ -94,16 +81,10 @@ PartitionedMS::PartitionedMS(const Handle& handle, size_t partIndex, aocommon::P
 		}
 	}
 	
-	for(int tries = 0; tries < 5; tries++)
-	{
-		_weightFile.open(partPrefix+"-w.tmp", std::ios::in);
-		if(_weightFile.good()) 
-			break;
-		
-		std::this_thread::sleep_for(std::chrono::seconds(2));
-	}
-	if(!_weightFile.good())
+	if (!aocommon::retry(10, [&] { _weightFile.open(partPrefix+"-w.tmp", std::ios::in); return _weightFile.good(); },
+							 [] { std::this_thread::sleep_for(std::chrono::seconds(2)); }))
 		throw std::runtime_error("Error opening temporary data file");
+
 	_weightBuffer.resize(_partHeader.channelCount * _polarizationCountInFile);
 	_modelBuffer.resize(_partHeader.channelCount * _polarizationCountInFile);
 }
@@ -598,20 +579,12 @@ void PartitionedMS::unpartition(const PartitionedMS::Handle::HandleData& handle)
 	
 	ChannelRange firstRange = handle._channels[0];
 	std::string firstDataFilename = getPartPrefix(handle._msPath, 0, *pols.begin(), firstRange.dataDescId, handle._temporaryDirectory)+".tmp";
-	std::ifstream firstDataFile(firstDataFilename, std::ios::in);
-	if(!firstDataFile.good())
-	{
-		for (int tries = 0; tries < 5; tries++)
-		{
-			std::this_thread::sleep_for(std::chrono::seconds(2));
-			firstDataFile.open(firstDataFilename, std::ios::in);
-			if (firstDataFile.good())
-				break;
-		}
+	std::ifstream firstDataFile;
 
-		if (!firstDataFile.good())
-			throw std::runtime_error("Error opening temporary data file");
-	}
+	if (!aocommon::retry(10, [&] { firstDataFile.open(firstDataFilename, std::ios::in); return firstDataFile.good(); },
+							 [] { std::this_thread::sleep_for(std::chrono::seconds(2)); }))
+		throw std::runtime_error("Error opening temporary data file");
+
 	PartHeader firstPartHeader;
 	firstDataFile.read(reinterpret_cast<char*>(&firstPartHeader), sizeof(PartHeader));
 	if(!firstDataFile.good())
