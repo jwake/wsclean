@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 2.8.8)
+cmake_policy(SET CMP0057 NEW)
+cmake_policy(SET CMP0028 NEW)
 
 project(wsclean)
 
@@ -34,8 +36,12 @@ find_library(FFTW3F_THREADS_LIB fftw3f_threads REQUIRED)
 find_path(FFTW3_INCLUDE_DIR NAMES fftw3.h)
 
 #Prevent accidentally finding old BoostConfig.cmake file from casapy
-set(Boost_NO_BOOST_CMAKE ON)
-find_package(Boost COMPONENTS date_time filesystem system program_options REQUIRED)
+#set(Boost_NO_BOOST_CMAKE ON)
+set(Boost_USE_MULTITHREADED TRUE)
+find_package(Boost REQUIRED COMPONENTS date_time filesystem system program_options)
+
+#find_package(Boost COMPONENTS REQUIRED date_time filesystem system program_options)
+
 find_library(PTHREAD_LIB pthread REQUIRED)
 find_library(DL_LIB dl REQUIRED)
 find_library(GSL_LIB NAMES gsl)
